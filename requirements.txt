@@ -1,4 +1,4 @@
-aiogram>=3.0.0
-apscheduler>=3.10.0
-pytz
-openai>=1.0.0
+aiogram==3.4.1
+apscheduler
+openai
+
