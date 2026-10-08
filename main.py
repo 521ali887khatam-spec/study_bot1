@@ -5,22 +5,22 @@ from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from openai import OpenAI
 
-# 1. سرور پورت مجازی برای اینکه Render سرویس رو نبنده
+# 1. سرور برای زنده نگه داشتن در Render
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot is alive and healthy!")
+        self.wfile.write(b"Bot is alive!")
 
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
 
-# اجرای سرور وب در یک ترد جداگانه
 Thread(target=run_dummy_server, daemon=True).start()
 
 # 2. دریافت متغیرهای محیطی
@@ -35,7 +35,7 @@ client = OpenAI(
     base_url="https://api.avalai.ir/v1"
 )
 
-# 3. راه‌اندازی دیتابیس محلی
+# 3. دیتابیس
 def init_db():
     conn = sqlite3.connect("study_bot.db")
     c = conn.cursor()
@@ -67,24 +67,24 @@ def get_and_clear_messages(chat_id: int):
     conn.close()
     return [r[0] for r in rows]
 
-# 4. دریافت پیام‌ها از گروه‌ها
-@dp.message()
-async def handle_group_message(message: types.Message):
-    # ذخیره پیام‌هایی که داخل گروه فرستاده می‌شن
-    if message.chat.type in ["group", "supergroup"] and message.text:
-        save_message(message.chat.id, message.text)
+# 4. پاسخ به دستور استارت (برای اینکه بفهمی ربات روشنه!)
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    await message.reply("سلام علی جان! من روشنم و آماده کارم 🚀\nمنو ادد کن به گروه درسی‌تون و ادمینم کن تا پیام‌ها رو جمع کنم.")
 
-# 5. هوش مصنوعی و جمع‌بندی ساعت ۲۳:۵۹
-async def generate_summary(chat_id: int):
+# 5. هوش مصنوعی و تابع جمع‌بندی
+async def process_and_send_summary(chat_id: int):
     messages = get_and_clear_messages(chat_id)
     if not messages:
+        await bot.send_message(chat_id=chat_id, text="هنوز پیامی توی گروه ثبت نشده که خلاصه‌ش کنم!")
         return
 
     text_data = "\n".join(messages)
     prompt = f"""
-    تو دستیار گروه‌های درسی دانشگاهی هستی. پیام‌های امروز گروه ارسال شده است.
-    لطفاً پیام‌های چت معمولی، احوالپرسی و شوخی‌ها را حذف کن.
-    فقط و فقط اطلاعیه‌های درسی، ساعت و روز کلاس‌ها، امتحانات، کوئیزها و تکالیف را به شکل یک برنامه منظم، ساختاریافته و با بولت‌پوینت و هشتگ‌های مناسب (#امتحان #تکلیف #برنامه_کلاسی) بنویس:
+    تو دستیار دانشجویی علوم آزمایشگاهی و دروس دانشگاهی هستی. پیام‌های امروز گروه ارسال شده است.
+    چت‌های معمولی، سلام و احوالپرسی و شوخی‌ها رو نادیده بگیر.
+    اطلاعیه‌های درسی، ساعت و روز کلاس‌ها، کوئیزها، امتحانات، جزوه‌ها و تکالیف رو استخراج کن.
+    یک گزارش خیلی منظم و شیک با بالت‌پوینت و هشتگ‌های مناسب بساز:
 
     پیام‌ها:
     {text_data}
@@ -97,10 +97,25 @@ async def generate_summary(chat_id: int):
             temperature=0.3
         )
         summary = response.choices[0].message.content
-        await bot.send_message(chat_id=chat_id, text=f"📋 **جمع‌بندی برنامه‌های درسی امروز:**\n\n{summary}")
+        await bot.send_message(chat_id=chat_id, text=f"📋 **جمع‌بندی برنامه‌های گروه:**\n\n{summary}")
     except Exception as e:
-        print(f"AI Summary Error: {e}")
+        await bot.send_message(chat_id=chat_id, text=f"خطا در ارتباط با هوش مصنوعی: {e}")
 
+# 6. دستور تست دستی
+@dp.message(Command("test"))
+async def cmd_test(message: types.Message):
+    await message.reply("در حال بررسی پیام‌ها و فرستادن به AvalAI... چند ثانیه صبر کن...")
+    await process_and_send_summary(message.chat.id)
+
+# 7. دریافت و ذخیره پیام‌های گروه
+@dp.message()
+async def handle_group_message(message: types.Message):
+    if message.chat.type in ["group", "supergroup"] and message.text:
+        # اگر پیام دستور تلگرامی نبود ذخیره‌ش کن
+        if not message.text.startswith("/"):
+            save_message(message.chat.id, message.text)
+
+# 8. اجرای خودکار در ساعت ۲۳:۵۹
 async def run_daily_summary():
     conn = sqlite3.connect("study_bot.db")
     c = conn.cursor()
@@ -108,21 +123,16 @@ async def run_daily_summary():
     chats = [r[0] for r in c.fetchall()]
     conn.close()
 
-    for chat_id in chats:
-        await generate_summary(chat_id)
+    for c_id in chats:
+        await process_and_send_summary(c_id)
 
-# 6. اجرای ربات و زمان‌بند
 async def main():
     init_db()
     scheduler = AsyncIOScheduler(timezone="Asia/Tehran")
-    # زمان‌بندی روی ساعت ۲۳:۵۹ هر شب
     scheduler.add_job(run_daily_summary, "cron", hour=23, minute=59)
     scheduler.start()
-
-    print("Bot is up and polling...")
+    print("Bot is listening...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
