@@ -1,16 +1,22 @@
-# study_bot1# --- Keep-alive server for Render ---
-from aiohttp import web
-import os
+# Study Group Summary Bot
 
-async def health(request):
-    return web.Response(text="Bot is alive!")
+این ربات به طور خودکار پیام‌های گروه درسی شما را در طول روز جمع‌آوری می‌کند و هر شب در ساعت ۲۳:۵۹، خلاصه‌ای از مباحث درسی، امتحانات و تکالیف را برایتان ارسال می‌کند.
 
-app = web.Application()
-app.router.add_get('/', health)
+## ویژگی‌ها
+- مانیتورینگ خودکار پیام‌های گروه
+- فیلتر کردن پیام‌های غیرضروری
+- خلاصه سازی هوشمند با استفاده از مدل‌های زبانی (AvalAI)
+- گزارش‌دهی دقیق در پایان هر روز
 
-def run_keepalive():
-    port = int(os.environ.get('PORT', 10000))
-    web.run_app(app, host='0.0.0.0', port=port)
+## تکنولوژی‌های استفاده شده
+- **Python**: زبان اصلی برنامه
+- **Aiogram**: برای ارتباط با API تلگرام
+- **SQLite**: برای ذخیره‌سازی محلی پیام‌ها
+- **APScheduler**: برای زمان‌بندی گزارش‌های شبانه
+- **Render**: برای میزبانی ۲۴/۷ ربات
 
-from threading import Thread
-Thread(target=run_keepalive, daemon=True).start()
+## تنظیمات
+برای اجرای این ربات، متغیرهای محیطی (Environment Variables) زیر را در سرویس‌دهنده خود تنظیم کنید:
+- `BOT_TOKEN`: توکن دریافت شده از @BotFather
+- `AVALAI_API_KEY`: کلید API دریافت شده از پنل AvalAI
+
